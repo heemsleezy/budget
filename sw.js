@@ -1,5 +1,5 @@
 // Budget PWA service worker
-const CACHE = 'budget-v5';
+const CACHE = 'budget-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -8,13 +8,13 @@ const ASSETS = [
   './icon-512.png',
   './apple-touch-icon.png'
 ];
-
+ 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
   );
 });
-
+ 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
@@ -22,7 +22,7 @@ self.addEventListener('activate', (e) => {
       .then(() => self.clients.claim())
   );
 });
-
+ 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -41,3 +41,4 @@ self.addEventListener('fetch', (e) => {
     })
   );
 });
+ 
