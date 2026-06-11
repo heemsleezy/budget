@@ -159,6 +159,13 @@
   .qchip.on{background:var(--gold);color:#1a1407;border-color:transparent;font-weight:600}
   .qchip:active{transform:scale(.96)}
 
+  /* expense filter bar */
+  .filterbar{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;-webkit-overflow-scrolling:touch}
+  .filterbar::-webkit-scrollbar{display:none}
+  .filterbar .fchip{display:flex;align-items:center;gap:7px;white-space:nowrap;flex-shrink:0;font-family:'Inter';font-size:12.5px;font-weight:500;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
+  .filterbar .fchip .fd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .filterbar .fchip.on{background:var(--gold);color:#1a1407;border-color:transparent;font-weight:600}
+
   /* toggle switch */
   .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:13px;padding:13px 14px;margin-bottom:16px}
   .toggle-row .tr-title{font-size:14px;font-weight:500}
@@ -379,6 +386,7 @@
           <button id="m-next2">›</button>
         </div>
       </div>
+      <div id="ex-filter"></div>
       <div id="ex-list"></div>
     </section>
 
@@ -654,6 +662,7 @@ if ('serviceWorker' in navigator) {
   let catEditingId = null;
   let selectedColor = PALETTE[0];
   let fcSort = "default";
+  let expFilter = null;
   let privacy = false;
   let incRecurring = false;
   let trendYear = new Date().getFullYear();
@@ -905,7 +914,26 @@ if ('serviceWorker' in navigator) {
 
   function renderExpenses(){
     const list=$("#ex-list");
-    const items=monthExpenses(currentMonth).slice().sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const all=monthExpenses(currentMonth);
+
+    // filter bar (Alle + categories present this month)
+    const fb=$("#ex-filter");
+    const ids=[]; const seen={};
+    all.forEach(e=>{ if(!seen[e.category]){ seen[e.category]=1; ids.push(e.category); } });
+    if(expFilter && ids.indexOf(expFilter)<0) expFilter=null;
+    if(all.length===0){ fb.innerHTML=""; }
+    else{
+      let html='<div class="filterbar">';
+      html+=`<button class="fchip${!expFilter?' on':''}" data-f="">Alle</button>`;
+      ids.forEach(id=>{ const c=cat(id); html+=`<button class="fchip${expFilter===id?' on':''}" data-f="${id}"><span class="fd" style="background:${c.color}"></span>${esc(c.name)}</button>`; });
+      html+='</div>';
+      fb.innerHTML=html;
+      fb.querySelectorAll('.fchip').forEach(b=>b.addEventListener('click',()=>{ expFilter=b.dataset.f||null; renderExpenses(); }));
+    }
+
+    let items=all.slice();
+    if(expFilter) items=items.filter(e=>e.category===expFilter);
+    items.sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     if(items.length===0){
       list.innerHTML='<div class="empty"><p>Keine Einträge in '+monthLabel(currentMonth)+'.<br>Tipp unten auf <b>+</b> für deinen ersten Eintrag.</p></div>';
       return;
@@ -1284,7 +1312,7 @@ if ('serviceWorker' in navigator) {
   }
   function shiftMonth(delta){
     const [y,m]=currentMonth.split("-").map(Number);
-    const d=new Date(y,m-1+delta,1); currentMonth=ym(d); renderAll();
+    const d=new Date(y,m-1+delta,1); currentMonth=ym(d); expFilter=null; renderAll();
     if($("#ov-calendar").classList.contains("show")) renderCalendar(null);
   }
 
