@@ -1,5 +1,5 @@
 // Budget PWA service worker
-const CACHE = 'budget-v9';
+const CACHE = 'budget-v10';
 const ASSETS = [
   './',
   './index.html',
