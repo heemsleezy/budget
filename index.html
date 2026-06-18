@@ -50,12 +50,12 @@
 
   .hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 0 4px}
   .hero .ring-wrap{position:relative;width:188px;height:188px}
-  .hero .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 22px}
-  .cap{font-size:11px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-weight:600}
-  .hero .big{font-size:32px;font-weight:700;letter-spacing:-.03em;margin-top:5px;line-height:1}
-  .hero .of{font-size:12px;color:var(--dim);margin-top:7px}
+  .hero .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 30px}
+  .cap{font-size:10px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+  .hero .big{font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:4px;line-height:1}
+  .hero .of{font-size:11px;color:var(--dim);margin-top:6px}
   .hero .of b{color:var(--text);font-weight:600}
-  .pill{display:inline-block;margin-top:10px;font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;background:var(--surface-2);color:var(--dim)}
+  .pill{display:inline-block;margin-top:8px;font-size:11px;font-weight:600;padding:5px 11px;border-radius:999px;cursor:pointer;background:var(--surface-2);color:var(--dim)}
 
   .ring{width:100%;height:100%;transform:rotate(-90deg)}
   .ring-track{fill:none;stroke:var(--surface-2);stroke-width:8}
@@ -293,8 +293,9 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
         <div class="stat"><div class="k">Fixkosten</div><div class="v num" id="s-fixed">0 €</div></div>
       </div>
       <div id="pending-host"></div>
-      <div class="sec-h"><h2>Konten</h2><span class="link" id="acc-manage">Verwalten</span></div>
+      <div class="sec-h"><h2>Konten</h2><div style="display:flex;gap:16px"><span class="link" id="open-transfer">Umbuchen</span><span class="link" id="acc-manage">Verwalten</span></div></div>
       <div id="acc-cards"></div>
+      <div id="transfer-host"></div>
     </section>
 
     <section class="view" id="v-stats">
@@ -443,6 +444,18 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
   <div class="cal-summary" id="ty-summary"></div>
 </div></div>
 
+<div class="overlay" id="ov-transfer"><div class="sheet"><div class="grab"></div>
+  <h3 id="tr-title">Umbuchen</h3>
+  <p class="sub">Geld von einem Konto auf ein anderes verschieben. Zählt nicht als Ausgabe oder Einnahme.</p>
+  <div class="amt-input"><input id="tr-amt" type="text" inputmode="decimal" placeholder="0">&thinsp;<span class="eur">€</span></div>
+  <div class="field mt"><label class="fl">Von</label><div class="chips" id="tr-from"></div></div>
+  <div class="field"><label class="fl">Nach</label><div class="chips" id="tr-to"></div></div>
+  <div class="field"><label class="fl">Datum</label><input id="tr-date" type="date"></div>
+  <div class="field"><label class="fl">Notiz (optional)</label><input id="tr-note" placeholder="z.B. Sparen"></div>
+  <button class="btn btn-primary" id="tr-save">Speichern</button>
+  <button class="btn btn-danger mt" id="tr-delete" style="display:none">Umbuchung löschen</button>
+</div></div>
+
 <div class="overlay" id="ov-confirm"><div class="sheet"><div class="grab"></div>
   <h3>Alle Daten löschen?</h3>
   <p class="sub">Das löscht alles unwiderruflich. Lade vorher ein Backup runter, falls du etwas behalten willst.</p>
@@ -469,7 +482,7 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
     {id:"c4",name:"Arbeit",color:"#5BB8C4",limit:0}
   ]; }
 
-  let state={ accounts:DEFAULT_ACCOUNTS(), categories:DEFAULT_CATS(), expenses:[], incomes:[], fixedCosts:[], settings:{carryover:true}, carryoverDone:{}, installedAt:null, lastBackup:null };
+  let state={ accounts:DEFAULT_ACCOUNTS(), categories:DEFAULT_CATS(), expenses:[], incomes:[], fixedCosts:[], transfers:[], settings:{carryover:true}, carryoverDone:{}, installedAt:null, lastBackup:null };
   let currentMonth=ym(new Date());
   let currentView="overview";
   let editingId=null, selectedCat=null, expAccount=null;
@@ -477,6 +490,7 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
   let fcEditingId=null, fcAccount=null;
   let catEditingId=null, accEditingId=null, selectedColor=PALETTE[0];
   let fcSort="default", expFilter=null, privacy=false, trendYear=new Date().getFullYear();
+  let tEditingId=null, tFrom=null, tTo=null;
 
   function ym(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); }
   function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -514,7 +528,10 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
   function fcState(fc,m){ if(fc.paid&&(m in fc.paid)) return fc.paid[m]; const real=ym(new Date()); if(m<real) return true; if(m===real) return new Date().getDate()>=(fc.day||1); return false; }
   function deductedFixed(m,a){ return state.fixedCosts.filter(f=>(!a||f.account===a)&&fcState(f,m)).reduce((s,f)=>s+(+f.amount||0),0); }
   function pendingFixed(m,a){ return state.fixedCosts.filter(f=>(!a||f.account===a)&&!fcState(f,m)).reduce((s,f)=>s+(+f.amount||0),0); }
-  function available(m,a){ return incomeTotal(m,a)-spent(m,a)-deductedFixed(m,a); }
+  function monthTransfers(m){ return (state.transfers||[]).filter(t=>t.date.slice(0,7)===m); }
+  function transfersOut(m,a){ return monthTransfers(m).filter(t=>t.from===a).reduce((s,t)=>s+(+t.amount||0),0); }
+  function transfersIn(m,a){ return monthTransfers(m).filter(t=>t.to===a).reduce((s,t)=>s+(+t.amount||0),0); }
+  function available(m,a){ let v=incomeTotal(m,a)-spent(m,a)-deductedFixed(m,a); if(a) v=v-transfersOut(m,a)+transfersIn(m,a); return v; }
 
   function ensureCarryovers(){
     if(!state.settings.carryover) return false;
@@ -549,6 +566,7 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
     if(!Array.isArray(s.expenses)) s.expenses=[];
     if(!Array.isArray(s.incomes)) s.incomes=[];
     if(!Array.isArray(s.fixedCosts)) s.fixedCosts=[];
+    if(!Array.isArray(s.transfers)) s.transfers=[];
     if(!s.settings) s.settings={carryover:true};
     if(typeof s.settings.carryover==="undefined") s.settings.carryover=true;
     if(!s.carryoverDone) s.carryoverDone={};
@@ -559,7 +577,7 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
     return s;
   }
   function renderAll(){ renderOverview(); renderStats(); renderAnalysis(); renderExpenses(); renderIncome(); renderFixed(); renderSettings(); renderReminder(); updateBadge(); syncMonthLabels(); }
-  function syncMonthLabels(){ ["#m-label","#m-label2","#m-label3","#m-label4","#m-label5"].forEach(s=>{const e=$(s);if(e)e.textContent=monthLabel(currentMonth);}); ["#ex-month","#st-month","#in-month","#fx-month"].forEach(s=>{const e=$(s);if(e)e.textContent=monthLabel(currentMonth);}); }
+  function syncMonthLabels(){ const isCur=currentMonth===ym(new Date()); const col=isCur?"var(--neg)":"var(--text)"; ["#m-label","#m-label2","#m-label3","#m-label4","#m-label5"].forEach(s=>{const e=$(s);if(e){e.textContent=monthLabel(currentMonth);e.style.color=col;}}); ["#ex-month","#st-month","#in-month","#fx-month"].forEach(s=>{const e=$(s);if(e)e.textContent=monthLabel(currentMonth);}); }
 
   function renderOverview(){
     const inc=incomeTotal(currentMonth), sp=spent(currentMonth), df=deductedFixed(currentMonth), pf=pendingFixed(currentMonth);
@@ -591,7 +609,36 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
       wrap.appendChild(el);
     });
     $$("#acc-cards .acc-card").forEach(c=>c.addEventListener("click",()=>openAccount(c.dataset.acc)));
+    renderTransfers();
   }
+
+  function renderTransfers(){
+    const host=$("#transfer-host"); if(!host) return;
+    const items=monthTransfers(currentMonth).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+    if(items.length===0){ host.innerHTML=""; return; }
+    host.innerHTML='<div class="sec-h"><h2>Umbuchungen</h2></div><div class="list">'+items.map(t=>{ const f=acc(t.from),to=acc(t.to);
+      return '<div class="item" data-tr="'+t.id+'"><span class="dot" style="background:var(--surface-2)"><i style="background:var(--dim)"></i></span><span class="mid"><div class="t">'+esc(f.name)+' → '+esc(to.name)+'</div>'+(t.note?'<div class="s">'+esc(t.note)+'</div>':'')+'</span><span class="ra num">'+eur(+t.amount)+'</span></div>';
+    }).join("")+'</div>';
+    $$("#transfer-host .item").forEach(it=>it.addEventListener("click",()=>openTransfer(it.dataset.tr)));
+  }
+
+  function openTransfer(id){
+    if(state.accounts.length<2){ toast("Mind. 2 Konten nötig"); return; }
+    tEditingId=id||null;
+    if(id){ const t=state.transfers.find(x=>x.id===id); $("#tr-title").textContent="Umbuchung bearbeiten"; $("#tr-amt").value=t.amount; tFrom=t.from; tTo=t.to; $("#tr-date").value=t.date; $("#tr-note").value=t.note||""; $("#tr-delete").style.display="block"; }
+    else{ $("#tr-title").textContent="Umbuchen"; $("#tr-amt").value=""; tFrom=state.accounts[0].id; tTo=state.accounts[1].id; $("#tr-date").value=todayISO(); $("#tr-note").value=""; $("#tr-delete").style.display="none"; }
+    renderTransferChips(); $("#ov-transfer").classList.add("show"); setTimeout(()=>{ if(!id)$("#tr-amt").focus(); },300);
+  }
+  function renderTransferChips(){
+    const fw=$("#tr-from"); fw.innerHTML=state.accounts.map(a=>'<div class="chip'+(a.id===tFrom?' sel':'')+'" data-a="'+a.id+'" style="'+(a.id===tFrom?'background:'+a.color:'')+'"><span class="cd" style="background:'+(a.id===tFrom?'#161618':a.color)+'"></span>'+esc(a.name)+'</div>').join("");
+    fw.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{ tFrom=b.dataset.a; if(tTo===tFrom){ const other=state.accounts.find(a=>a.id!==tFrom); tTo=other?other.id:tTo; } renderTransferChips(); }));
+    const tw=$("#tr-to"); tw.innerHTML=state.accounts.map(a=>'<div class="chip'+(a.id===tTo?' sel':'')+'" data-a="'+a.id+'" style="'+(a.id===tTo?'background:'+a.color:'')+'"><span class="cd" style="background:'+(a.id===tTo?'#161618':a.color)+'"></span>'+esc(a.name)+'</div>').join("");
+    tw.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{ tTo=b.dataset.a; if(tFrom===tTo){ const other=state.accounts.find(a=>a.id!==tTo); tFrom=other?other.id:tFrom; } renderTransferChips(); }));
+  }
+  async function saveTransfer(){ const amt=parseNum($("#tr-amt").value); if(amt<=0){toast("Betrag eingeben");return;} if(!tFrom||!tTo||tFrom===tTo){toast("Zwei verschiedene Konten wählen");return;}
+    const date=$("#tr-date").value||todayISO(),note=$("#tr-note").value.trim();
+    if(tEditingId) Object.assign(state.transfers.find(x=>x.id===tEditingId),{from:tFrom,to:tTo,amount:amt,date,note}); else state.transfers.push({id:uid(),from:tFrom,to:tTo,amount:amt,date,note});
+    await save(); currentMonth=date.slice(0,7); $("#ov-transfer").classList.remove("show"); renderAll(); toast(tEditingId?"Gespeichert":"Umgebucht"); }
 
   function renderStats(){
     const df=deductedFixed(currentMonth);
@@ -823,6 +870,9 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
     $("#priv-toggle").addEventListener("click",togglePrivacy);
     $("#cal-open").addEventListener("click",openCalendar);
     $("#acc-manage").addEventListener("click",()=>go("settings"));
+    $("#open-transfer").addEventListener("click",()=>openTransfer(null));
+    closeOv("ov-transfer"); $("#tr-save").addEventListener("click",saveTransfer);
+    $("#tr-delete").addEventListener("click",async()=>{state.transfers=state.transfers.filter(x=>x.id!==tEditingId);await save();$("#ov-transfer").classList.remove("show");renderAll();toast("Gelöscht");});
     $("#in-edit-salary").addEventListener("click",openSalary);
     $("#g-pill").addEventListener("click",openSalary);
     $("#cal-prev").addEventListener("click",()=>shiftMonth(-1)); $("#cal-next").addEventListener("click",()=>shiftMonth(1));
@@ -839,7 +889,7 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
     closeOv("ov-category"); $("#cat-new").addEventListener("click",()=>openCategory(null)); $("#cat-save").addEventListener("click",saveCategory);
     $("#cat-delete").addEventListener("click",async()=>{state.categories=state.categories.filter(c=>c.id!==catEditingId);await save();$("#ov-category").classList.remove("show");renderAll();toast("Gelöscht");});
     closeOv("ov-account"); $("#acc-new").addEventListener("click",()=>openAccount(null)); $("#acc-save").addEventListener("click",saveAccount);
-    $("#acc-delete").addEventListener("click",async()=>{ if(state.accounts.length<=1){toast("Mind. 1 Konto nötig");return;} const rest=state.accounts.find(a=>a.id!==accEditingId).id; state.expenses.forEach(e=>{if(e.account===accEditingId)e.account=rest;}); state.incomes.forEach(i=>{if(i.account===accEditingId)i.account=rest;}); state.fixedCosts.forEach(f=>{if(f.account===accEditingId)f.account=rest;}); state.accounts=state.accounts.filter(a=>a.id!==accEditingId); await save(); $("#ov-account").classList.remove("show"); renderAll(); toast("Konto gelöscht");});
+    $("#acc-delete").addEventListener("click",async()=>{ if(state.accounts.length<=1){toast("Mind. 1 Konto nötig");return;} const rest=state.accounts.find(a=>a.id!==accEditingId).id; state.expenses.forEach(e=>{if(e.account===accEditingId)e.account=rest;}); state.incomes.forEach(i=>{if(i.account===accEditingId)i.account=rest;}); state.fixedCosts.forEach(f=>{if(f.account===accEditingId)f.account=rest;}); state.transfers=(state.transfers||[]).filter(t=>t.from!==accEditingId&&t.to!==accEditingId); state.accounts=state.accounts.filter(a=>a.id!==accEditingId); await save(); $("#ov-account").classList.remove("show"); renderAll(); toast("Konto gelöscht");});
     closeOv("ov-salary"); $("#sal-save").addEventListener("click",saveSalary);
     closeOv("ov-calendar"); closeOv("ov-trend");
     $("#carry-toggle").addEventListener("click",async()=>{state.settings.carryover=!state.settings.carryover; if(state.settings.carryover) ensureCarryovers(); await save(); renderAll(); toast(state.settings.carryover?"Restgeld-Übertrag an":"Übertrag aus");});
@@ -849,7 +899,7 @@ if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.s
     $("#reset-btn").addEventListener("click",()=>{$("#confirm-input").value="";$("#confirm-delete").disabled=true;$("#ov-confirm").classList.add("show");setTimeout(()=>$("#confirm-input").focus(),300);});
     closeOv("ov-confirm"); $("#confirm-cancel").addEventListener("click",()=>$("#ov-confirm").classList.remove("show"));
     $("#confirm-input").addEventListener("input",e=>{$("#confirm-delete").disabled=e.target.value!=="LÖSCHEN";});
-    $("#confirm-delete").addEventListener("click",async()=>{ state={ accounts:DEFAULT_ACCOUNTS(), categories:DEFAULT_CATS(), expenses:[], incomes:[], fixedCosts:[], settings:{carryover:true}, carryoverDone:{}, installedAt:todayISO(), lastBackup:todayISO() }; await save(); currentMonth=ym(new Date()); $("#ov-confirm").classList.remove("show"); renderAll(); go("overview"); toast("Alles zurückgesetzt"); });
+    $("#confirm-delete").addEventListener("click",async()=>{ state={ accounts:DEFAULT_ACCOUNTS(), categories:DEFAULT_CATS(), expenses:[], incomes:[], fixedCosts:[], transfers:[], settings:{carryover:true}, carryoverDone:{}, installedAt:todayISO(), lastBackup:todayISO() }; await save(); currentMonth=ym(new Date()); $("#ov-confirm").classList.remove("show"); renderAll(); go("overview"); toast("Alles zurückgesetzt"); });
   }
 
   async function init(){
